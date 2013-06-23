@@ -74,16 +74,24 @@ fetch = (path) ->
       doctest.run()
   else
     fs = require 'fs'
-    fs.readFile path, 'utf8', (err, text) ->
-      [name, type] = /[^/]+[.](coffee|js)$/.exec path
+    pathlib = require 'path'
+    # process.cwd() will not yield the desired path if doctest is run
+    # as a child process. The DOCTEST_CWD environment variable may be
+    # set so that relative paths are resolved correctly in such cases.
+    abspath = pathlib.resolve process.env.DOCTEST_CWD ? process.cwd(), path
+    fs.readFile abspath, 'utf8', (err, text) ->
+      throw err if err?
+      name = pathlib.basename abspath
+      source = switch ext = pathlib.extname name
+        when '.coffee' then CoffeeScript.compile rewrite text, 'coffee'
+        when '.js'     then rewrite text, 'js'
+        else                throw new Error "Unsupported extension: #{ext}"
+      filepath = "#{abspath}-#{+new Date}"
+      fs.writeFileSync filepath, source, 'utf8'
       console.log "running doctests in #{name}..."
-      source = rewrite text, type
-      source = CoffeeScript.compile source if type is 'coffee'
-      name += "-#{+new Date}"
-      file = "#{__dirname}/#{name}.js"
-      fs.writeFileSync file, source, 'utf8'
-      require "./#{name}"
-      fs.unlink file
+      # Delete the temporary file, even if an error is thrown during
+      # its evaluation.
+      try require filepath finally fs.unlink filepath
       doctest.run()
 
 
@@ -130,7 +138,7 @@ rewrite.js = (input) ->
   if typeof window isnt 'undefined'
     "window.__doctest = doctest;\n#{input}"
   else
-    "var __doctest = require('../lib/doctest');\n#{input}"
+    "var __doctest = require('#{__filename}');\n#{input}"
 
 
 rewrite.coffee = (input) ->
@@ -140,7 +148,7 @@ rewrite.coffee = (input) ->
   lines.push if typeof window isnt 'undefined'
     'window.__doctest = doctest'
   else
-    "__doctest = require '../lib/doctest'"
+    "__doctest = require '#{__filename}'"
 
   expr = ''
   for line, idx in input.split('\n')
