@@ -28,6 +28,6 @@ setup:
 
 test:
 	@make
-	@$(bin)/coffee test/cli.coffee
+	@DOCTEST_CWD=$$(pwd) doctest=$$(pwd)/bin/doctest cram test/cli.t
 	@sleep 0.1 && test/open http://localhost:$(PORT) &
 	@$(bin)/coffee test/server.coffee

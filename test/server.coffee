@@ -31,11 +31,10 @@ app.get '/doctest.js', (req, res) ->
     res.contentType 'js'
     res.send compile text
 
-_.each ['browser', 'tests'], (name) ->
-  app.get "/#{name}.js", (req, res) ->
-    fs.readFile path.resolve('test', "#{name}.coffee"), 'utf8', (err, text) ->
-      res.contentType 'js'
-      res.send compile text
+app.get '/browser.js', (req, res) ->
+  fs.readFile path.resolve('test', 'browser.coffee'), 'utf8', (err, text) ->
+    res.contentType 'js'
+    res.send compile text
 
 port = process.env.PORT ? 3000
 app.listen port, -> console.log "listening on port #{port}"
