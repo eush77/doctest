@@ -73,42 +73,46 @@ rewrite = (input, type) ->
   rewrite[type] input.replace /\r\n?/g, '\n'
 
 
+replace = (input, replacement, {start, end}) ->
+  input
+  .split '\n'
+  .map (line, idx) ->
+    lineNumber = idx + 1
+    switch
+      when lineNumber == start.line == end.line
+        "#{line.substr 0, start.column}#{replacement}#{line.substr end.column + 1}"
+      when lineNumber == start.line
+        "#{line.substr 0, start.column}#{replacement}"
+      when lineNumber == end.line
+        line.substr end.column + 1
+      when start.line < lineNumber < end.line
+        ''
+      else
+        line
+  .join '\n'
+
 rewrite.js = (input) ->
   f = (expr) -> "function() {\n  return #{expr}\n}"
 
-  processComment = do (expr = '') -> ({value}, start) ->
+  processComment = do (expr = '') -> (comment) ->
     lines = []
-    for line in value.split('\n')
-      comment = _.last /^[ \t]*(.*)/.exec line
-      if match = /^>(.*)/.exec comment
+    for line in comment.value.split('\n')
+      if match = /^[ \t]*>(.*)/.exec line
         lines.push "__doctest.input(#{f expr})" if expr
         expr = match[1]
-      else if match = /^[.]+(.*)/.exec comment
+      else if match = /^[ \t]*[.]+(.*)/.exec line
         expr += "\n#{match[1]}"
       else if expr
         lines.push "__doctest.input(#{f expr})"
-        lines.push "__doctest.output(#{start.line}, #{f line})"
+        lines.push "__doctest.output(#{comment.loc.start.line}, #{f line})"
         expr = ''
     escodegen.generate esprima.parse(lines.join('\n')), indent: '  '
 
-  for {loc} in esprima.parse(input, comment: yes, loc: yes).comments
-    [comment] = esprima.parse(input, comment: yes, loc: yes).comments
-    {start, end} = comment.loc
-    lines = input.split('\n')
-    idx = start.line - 1
-    line = lines[idx]
-    if end.line is start.line
-      lines[idx] = line.substr(0, start.column) + line.substr(end.column)
-    else
-      lines[idx] = line.substr(0, start.column)
-      lines[idx] = '' until ++idx is end.line - 1
-      lines[idx] = lines[idx].substr(end.column)
-    line = lines[start.line - 1]
-    lines[start.line - 1] = line.substr(0, start.column) +
-                            processComment(comment, loc.start) +
-                            line.substr(start.column)
-    input = lines.join('\n')
-  input
+  options = comment: yes, loc: yes
+  _.reduce esprima.parse(input, options).comments, (input, comment) ->
+    replace input, processComment(comment),
+            esprima.parse(input, options).comments[0].loc
+  , input
 
 
 rewrite.coffee = (input) ->
