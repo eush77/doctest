@@ -73,24 +73,6 @@ rewrite = (input, type) ->
   rewrite[type] input.replace /\r\n?/g, '\n'
 
 
-replace = (input, replacement, {start, end}) ->
-  input
-  .split '\n'
-  .map (line, idx) ->
-    lineNumber = idx + 1
-    switch
-      when lineNumber == start.line == end.line
-        "#{line.substr 0, start.column}#{replacement}#{line.substr end.column + 1}"
-      when lineNumber == start.line
-        "#{line.substr 0, start.column}#{replacement}"
-      when lineNumber == end.line
-        line.substr end.column + 1
-      when start.line < lineNumber < end.line
-        ''
-      else
-        line
-  .join '\n'
-
 rewrite.js = (input) ->
   f = (expr) -> "function() {\n  return #{expr}\n}"
 
@@ -109,10 +91,23 @@ rewrite.js = (input) ->
     escodegen.generate esprima.parse(lines.join('\n')), indent: '  '
 
   options = comment: yes, loc: yes
-  _.reduce esprima.parse(input, options).comments, (input, comment) ->
-    replace input, processComment(comment),
-            esprima.parse(input, options).comments[0].loc
-  , input
+  {comments} = esprima.parse input, options
+  LINES = input.split '\n'
+  [xxx] = _.reduce comments, ([chunks, position], comment) ->
+    lineNumber = position.line
+    if comment.loc.start.line is lineNumber
+      [[chunks..., LINES[lineNumber - 1].substr(position.column, comment.loc.start.column)], comment.loc.end]
+    else
+      lines__ = [LINES[lineNumber - 1].substr(position.column)]
+      lineNumber += 1
+      while lineNumber < comment.loc.start.line
+        lines__.push LINES[lineNumber - 1]
+        lineNumber += 1
+      lines__.push LINES[lineNumber - 1].substr(0, comment.loc.start.column)
+      [[chunks..., lines__.join('\n')], comment.loc.end]
+  , [[], line: 1, column: 0]
+  xxx.push [LINES[_.last(comments).loc.end.line - 1].substr(_.last(comments).loc.end.column)].concat(LINES.slice(_.last(comments).loc.end.line))
+  _.initial(_.flatten(_.zip(xxx, _.map(comments, processComment)))).join('')
 
 
 rewrite.coffee = (input) ->
