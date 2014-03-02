@@ -105,7 +105,7 @@ rewrite.js = (input) ->
       , ['', _.last accum]
     , ['', no]
 
-  INPUT = "#{input}\n// EOF\n"
+  INPUT = "#{input}\n// EOF"
   {comments} = esprima.parse INPUT, comment: yes, loc: yes
   xxx = _.chain comments
   .reduce ([chunks, position], comment) ->
