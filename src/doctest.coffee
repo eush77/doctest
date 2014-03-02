@@ -90,32 +90,27 @@ rewrite.js = (input) ->
         expr = ''
     escodegen.generate esprima.parse(lines.join('\n')), indent: '  '
 
-  zzz = (lines, start, end, printStuff) ->
+  zzz = (input, start, end) ->
     state = 0
     chars = []
-    for line, idx in lines
+    for line, idx in input.split /^/m
       lineNumber = idx + 1
-      for chr, column in [line.split('')..., '']
+      for chr, column in line.split('')
         if state is 0
-          #console.log 'lineNumber:', lineNumber, 'column:', column, 'start.line:', start.line, 'start.column:', start.column
           if lineNumber is start.line and column is start.column
             state = 1
         if state is 1
           if lineNumber is end.line and column is end.column
             state = 2
+            return chars.join ''
           else
             chars.push chr
-      if state is 1
-        chars.push '\n'
-    retval = chars.join ''
-    retval
 
   INPUT = "#{input}\n// EOF\n"
-  LINES = INPUT.split '\n'
   {comments} = esprima.parse INPUT, comment: yes, loc: yes
   xxx = _.chain comments
   .reduce ([chunks, position], comment) ->
-    [[chunks..., zzz LINES, position, comment.loc.start], comment.loc.end]
+    [[chunks..., zzz INPUT, position, comment.loc.start], comment.loc.end]
   , [[], line: 1, column: 0]
   .first()
   .zip _.map _.initial(comments), processComment
