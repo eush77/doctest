@@ -77,7 +77,7 @@ rewrite = (input, type) ->
 #
 # Returns the substring between the start and end positions.
 # Positions are specified in terms of line and column rather than index.
-# {line: 1, column: 1} represents the first character of the first line.
+# {line: 1, column: 0} represents the first character of the first line.
 #
 # > substring "hello\nworld", {line: 1, column: 3}, {line: 2, column: 2}
 # "lo\nwo"
@@ -112,14 +112,21 @@ rewrite.js = (input) ->
         expr = ''
     escodegen.generate esprima.parse(lines.join('\n')), indent: '  '
 
-  input_ = "#{input}\n// EOF"
-  {comments} = esprima.parse input_, comment: yes, loc: yes
+  # Locate all the comments within the input text, then use their
+  # positions to create a list containing all the code chunks. Note
+  # that if there are N comment chunks there are N + 1 code chunks.
+  # An empty comment at {line: Infinity, column: Infinity} enables
+  # the final code chunk to be captured.
+  comments = [
+    esprima.parse(input, comment: yes, loc: yes).comments...
+    value: '', loc: start: line: Infinity, column: Infinity
+  ]
   _.chain comments
   .reduce ([chunks, start], {loc}) ->
-    [[chunks..., substring input_, start, loc.start], loc.end]
+    [[chunks..., substring input, start, loc.start], loc.end]
   , [[], {line: 1, column: 0}]
   .first()
-  .zip _.map _.initial(comments), processComment
+  .zip _.map comments, processComment
   .flatten()
   .value()
   .join ''
