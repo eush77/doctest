@@ -73,6 +73,28 @@ rewrite = (input, type) ->
   rewrite[type] input.replace /\r\n?/g, '\n'
 
 
+# substring :: String,{line,column},{line,column} -> String
+#
+# Returns the substring between the start and end positions.
+# Positions are specified in terms of line and column rather than index.
+# {line: 1, column: 1} represents the first character of the first line.
+#
+# > substring "hello\nworld", {line: 1, column: 3}, {line: 2, column: 2}
+# "lo\nwo"
+substring = (input, start, end) ->
+  combine = (a, b) -> ["#{a[0]}#{b[0]}", b[1]]
+  _.first _.reduce input.split(/^/m), (accum, line, idx) ->
+    isStartLine = idx + 1 is start.line
+    isEndLine   = idx + 1 is end.line
+    combine accum, _.reduce line, ([chrs, inComment], chr, column) ->
+      if (isStartLine and column is start.column) or
+         inComment and not (isEndLine and column is end.column)
+        ["#{chrs}#{chr}", yes]
+      else
+        ["#{chrs}", no]
+    , ['', _.last accum]
+  , ['', no]
+
 rewrite.js = (input) ->
   f = (expr) -> "function() {\n  return #{expr}\n}"
 
@@ -90,26 +112,12 @@ rewrite.js = (input) ->
         expr = ''
     escodegen.generate esprima.parse(lines.join('\n')), indent: '  '
 
-  substring = (input, start, end) ->
-    combine = (a, b) -> ["#{a[0]}#{b[0]}", b[1]]
-    _.first _.reduce input.split(/^/m), (accum, line, idx) ->
-      isStartLine = idx + 1 is start.line
-      isEndLine   = idx + 1 is end.line
-      combine accum, _.reduce line, ([chrs, inComment], chr, column) ->
-        if (isStartLine and column is start.column) or
-           inComment and not (isEndLine and column is end.column)
-          ["#{chrs}#{chr}", yes]
-        else
-          ["#{chrs}", no]
-      , ['', _.last accum]
-    , ['', no]
-
-  INPUT = "#{input}\n// EOF"
-  {comments} = esprima.parse INPUT, comment: yes, loc: yes
-  xxx = _.chain comments
-  .reduce ([chunks, position], comment) ->
-    [[chunks..., substring INPUT, position, comment.loc.start], comment.loc.end]
-  , [[], line: 1, column: 0]
+  input_ = "#{input}\n// EOF"
+  {comments} = esprima.parse input_, comment: yes, loc: yes
+  _.chain comments
+  .reduce ([chunks, start], {loc}) ->
+    [[chunks..., substring input_, start, loc.start], loc.end]
+  , [[], {line: 1, column: 0}]
   .first()
   .zip _.map _.initial(comments), processComment
   .flatten()
