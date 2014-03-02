@@ -79,7 +79,7 @@ rewrite.js = (input) ->
   processComment = do (expr = '') -> ({value}, start) ->
     lines = []
     for line in value.split('\n')
-      [..., indent, comment] = /^([ \t]*)(.*)/.exec line
+      comment = _.last /^[ \t]*(.*)/.exec line
       if match = /^>(.*)/.exec comment
         lines.push "__doctest.input(#{f expr})" if expr
         expr = match[1]
