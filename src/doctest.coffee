@@ -90,24 +90,38 @@ rewrite.js = (input) ->
         expr = ''
     escodegen.generate esprima.parse(lines.join('\n')), indent: '  '
 
-  options = comment: yes, loc: yes
-  {comments} = esprima.parse input, options
-  LINES = input.split '\n'
-  [xxx] = _.reduce comments, ([chunks, position], comment) ->
-    lineNumber = position.line
-    if comment.loc.start.line is lineNumber
-      [[chunks..., LINES[lineNumber - 1].substr(position.column, comment.loc.start.column)], comment.loc.end]
-    else
-      lines__ = [LINES[lineNumber - 1].substr(position.column)]
-      lineNumber += 1
-      while lineNumber < comment.loc.start.line
-        lines__.push LINES[lineNumber - 1]
-        lineNumber += 1
-      lines__.push LINES[lineNumber - 1].substr(0, comment.loc.start.column)
-      [[chunks..., lines__.join('\n')], comment.loc.end]
+  zzz = (lines, start, end, printStuff) ->
+    state = 0
+    chars = []
+    for line, idx in lines
+      lineNumber = idx + 1
+      for chr, column in [line.split('')..., '']
+        if state is 0
+          #console.log 'lineNumber:', lineNumber, 'column:', column, 'start.line:', start.line, 'start.column:', start.column
+          if lineNumber is start.line and column is start.column
+            state = 1
+        if state is 1
+          if lineNumber is end.line and column is end.column
+            state = 2
+          else
+            chars.push chr
+      if state is 1
+        chars.push '\n'
+    retval = chars.join ''
+    retval
+
+  INPUT = "#{input}\n// EOF\n"
+  LINES = INPUT.split '\n'
+  {comments} = esprima.parse INPUT, comment: yes, loc: yes
+  xxx = _.chain comments
+  .reduce ([chunks, position], comment) ->
+    [[chunks..., zzz LINES, position, comment.loc.start], comment.loc.end]
   , [[], line: 1, column: 0]
-  xxx.push [LINES[_.last(comments).loc.end.line - 1].substr(_.last(comments).loc.end.column)].concat(LINES.slice(_.last(comments).loc.end.line))
-  _.initial(_.flatten(_.zip(xxx, _.map(comments, processComment)))).join('')
+  .first()
+  .zip _.map _.initial(comments), processComment
+  .flatten()
+  .value()
+  .join ''
 
 
 rewrite.coffee = (input) ->
