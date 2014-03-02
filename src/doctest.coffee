@@ -90,21 +90,20 @@ rewrite.js = (input) ->
         expr = ''
     escodegen.generate esprima.parse(lines.join('\n')), indent: '  '
 
+  combine = (a, b) -> ["#{a[0]}#{b[0]}", b[1]]
+
   zzz = (input, start, end) ->
-    state = 0
-    chars = []
-    for line, idx in input.split /^/m
-      lineNumber = idx + 1
-      for chr, column in line.split('')
-        if state is 0
-          if lineNumber is start.line and column is start.column
-            state = 1
-        if state is 1
-          if lineNumber is end.line and column is end.column
-            state = 2
-            return chars.join ''
-          else
-            chars.push chr
+    _.first _.reduce input.split(/^/m), (accum, line, idx) ->
+      isStartLine = idx + 1 is start.line
+      isEndLine   = idx + 1 is end.line
+      combine accum, _.reduce line, ([chrs, inComment], chr, column) ->
+        if (isStartLine and column is start.column) or
+           inComment and not (isEndLine and column is end.column)
+          ["#{chrs}#{chr}", yes]
+        else
+          ["#{chrs}", no]
+      , ['', _.last accum]
+    , ['', no]
 
   INPUT = "#{input}\n// EOF\n"
   {comments} = esprima.parse INPUT, comment: yes, loc: yes
