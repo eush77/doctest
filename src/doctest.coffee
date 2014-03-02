@@ -90,9 +90,8 @@ rewrite.js = (input) ->
         expr = ''
     escodegen.generate esprima.parse(lines.join('\n')), indent: '  '
 
-  combine = (a, b) -> ["#{a[0]}#{b[0]}", b[1]]
-
-  zzz = (input, start, end) ->
+  substring = (input, start, end) ->
+    combine = (a, b) -> ["#{a[0]}#{b[0]}", b[1]]
     _.first _.reduce input.split(/^/m), (accum, line, idx) ->
       isStartLine = idx + 1 is start.line
       isEndLine   = idx + 1 is end.line
@@ -109,7 +108,7 @@ rewrite.js = (input) ->
   {comments} = esprima.parse INPUT, comment: yes, loc: yes
   xxx = _.chain comments
   .reduce ([chunks, position], comment) ->
-    [[chunks..., zzz INPUT, position, comment.loc.start], comment.loc.end]
+    [[chunks..., substring INPUT, position, comment.loc.start], comment.loc.end]
   , [[], line: 1, column: 0]
   .first()
   .zip _.map _.initial(comments), processComment
