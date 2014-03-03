@@ -73,43 +73,26 @@ rewrite = (input, type) ->
   rewrite[type] input.replace /\r\n?/g, '\n'
 
 
-# state 0: default
-# state 1: input
-# state 2: output
-f$ = (comments) ->
-  _.last _.reduce comments, ([state, accum], comment) ->
-    _.reduce _.initial(comment.value.match(/(?!\s).*/g)), ([state, accum], line) ->
-      switch state
-        when 0
-          if prefix = _.first /^>/.exec line
-            [1, accum.concat {
-              input:
-                loc: comment.loc
-                lines: [line.substr prefix.length]
-            }]
-          else
-            [0, accum]
-        when 1
-          [initial..., {input}] = accum
-          if prefix = _.first /^>/.exec line
-            [1, accum.concat {
-              input:
-                loc: comment.loc
-                lines: [line.substr prefix.length]
-            }]
-          else if prefix = _.first /^[.]+/.exec line
-            [1, initial.concat {
-              input:
-                loc: {start: input.loc.start, end: comment.loc.end}
-                lines: [input.lines..., line.substr prefix.length]
-            }]
-          else
-            [0, initial.concat {
-              input
-              output:
-                loc: comment.loc
-                lines: [line]
-            }]
+# transformComments :: [Object] -> [Object]
+transformComments = (comments) ->
+  _.last _.reduce comments, ([state, accum], {loc, value}) ->
+    _.reduce _.initial(value.match /(?!\s).*/g), ([state, accum], line) ->
+      [prefix] = /^>|^[.]*/.exec line
+      if prefix is '>'
+        [1, accum.concat {input: {loc, lines: [line[prefix.length..]]}}]
+      else if state is 0
+        [0, accum]
+      else if prefix[0] is '.'
+        [1, _.initial(accum).concat {
+          input:
+            loc: start: _.last(accum).input.loc.start, end: loc.end
+            lines: _.last(accum).input.lines.concat line[prefix.length..]
+        }]
+      else
+        [0, _.initial(accum).concat {
+          input: _.last(accum).input
+          output: {loc, lines: [line]}
+        }]
     , [state, accum]
   , [0, []]
 
@@ -137,34 +120,39 @@ substring = (input, start, end) ->
   , ['', no]
 
 
-rewrite.js = (input) ->
-  f = (expr) -> "function() {\n  return #{expr}\n}"
-  capture =
-    input: (test) ->
-      "__doctest.input(#{f test.input.lines.join '\n'})"
-    output: (test) ->
-      "__doctest.output(#{test.output.loc.start.line}, #{f test.output.lines.join '\n'})"
+wrap =
+  # wrap.input :: Object -> String
+  input: (test) -> """
+    __doctest.input(function() {
+      return #{test.input.lines.join '\n'};
+    });
+  """
+  # wrap.output :: Object -> String
+  output: (test) -> """
+    __doctest.output(#{test.output.loc.start.line}, function() {
+      return #{test.output.lines.join '\n'};
+    });
+  """
 
+
+rewrite.js = (input) ->
   # Locate all the comments within the input text, then use their
   # positions to create a list containing all the code chunks. Note
   # that if there are N comment chunks there are N + 1 code chunks.
   # An empty comment at {line: Infinity, column: Infinity} enables
   # the final code chunk to be captured.
   {comments} = esprima.parse input, comment: yes, loc: yes
-
-  inf = line: Infinity, column: Infinity
-  tests = f$(comments).concat input: lines: [], loc: start: inf, end: inf
-
-  generate = _.partial escodegen.generate, _, indent: '  '
-
+  tests = transformComments comments
+  .concat input: lines: [], loc: start: {line: Infinity, column: Infinity}, \
+                                 end:   {line: Infinity, column: Infinity}
   _.chain tests
   .reduce ([chunks, start], test) ->
     [chunks.concat substring input, start, test.input.loc.start
      (test.output ? test.input).loc.end]
   , [[], {line: 1, column: 0}]
   .first()
-  .zip _.map tests, _.compose generate, esprima.parse, (test) ->
-    (capture[p] test for p in ['input', 'output'] when p of test).join('\n')
+  .zip _.map tests, _.compose escodegen.generate, esprima.parse, (test) ->
+    (wrap[p] test for p in ['input', 'output'] when p of test).join('\n')
   .flatten()
   .value()
   .join ''
