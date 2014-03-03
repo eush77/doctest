@@ -77,16 +77,16 @@ rewrite = (input, type) ->
 transformComments = (comments) ->
   _.last _.reduce comments, ([state, accum], {loc, value}) ->
     _.reduce _.initial(value.match /(?!\s).*/g), ([state, accum], line) ->
-      [prefix] = /^>|^[.]*/.exec line
+      [..., prefix, value] = /^(>|[.]*)(.*)$/.exec line
       if prefix is '>'
-        [1, accum.concat {input: {loc, value: line[prefix.length..]}}]
+        [1, accum.concat {input: {loc, value}}]
       else if state is 0
         [0, accum]
-      else if prefix[0] is '.'
+      else if prefix
         [1, _.initial(accum).concat {
           input:
             loc: start: _.last(accum).input.loc.start, end: loc.end
-            value: "#{_.last(accum).input.value}\n#{line[prefix.length..]}"
+            value: "#{_.last(accum).input.value}\n#{value}"
         }]
       else
         [0, _.initial(accum).concat {
@@ -157,33 +157,38 @@ rewrite.js = (input) ->
 
 rewrite.coffee = (input) ->
   wrap =
-    input: (indent, expr) -> """
+    input: (test, indent) -> """
       #{indent}__doctest.input ->
-      #{indent}  #{expr}
+      #{indent}  #{test.input.value}
       #{indent}
     """
-    output: (indent, expr, line) -> """
-      #{indent}__doctest.output #{line}, ->
-      #{indent}  #{expr}
+    output: (test, indent) -> """
+      #{indent}__doctest.output #{test.output.loc.start.line}, ->
+      #{indent}  #{test.output.value}
       #{indent}
     """
 
-  lines = []; expr = ''
-  for line, idx in input.split('\n')
-    if match = /^([ \t]*)#(?!##)[ \t]*(.+)/.exec line
-      [..., indent, comment] = match
-      if match = /^>(.*)/.exec comment
-        lines.push wrap.input indent, expr if expr
-        expr = match[1]
-      else if match = /^[.]+(.*)/.exec comment
-        expr += "\n#{indent}  #{match[1]}"
+  source = _.chain input.split '\n'
+  .reduce ([expr, lines], line, idx) ->
+    if match = /^([ \t]*)#(?!##)[ \t]*(>|[.]*)(.*)$/.exec line
+      [..., indent, prefix, value] = match
+      if prefix is '>'
+        [value, if expr then lines.concat wrap.input {input: value: expr}, indent else lines]
+      else if prefix
+        ["#{expr}\n#{indent}  #{value}", lines]
       else if expr
-        lines.push wrap.input indent, expr
-        lines.push wrap.output indent, comment, idx + 1
-        expr = ''
+        ['', lines.concat wrap.input({input: value: expr}, indent),
+                          wrap.output({output: value: value, loc: start: line: idx + 1}, indent)]
+      else
+        [expr, lines]
     else
-      lines.push line
-  CoffeeScript.compile lines.join('\n')
+      [expr, lines.concat line]
+  , ['', []]
+  .last()
+  .value()
+  .join '\n'
+
+  CoffeeScript.compile source
 
 
 defineFunctionString = '''
