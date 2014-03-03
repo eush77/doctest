@@ -95,6 +95,30 @@ substring = (input, start, end) ->
     , ['', _.last accum]
   , ['', no]
 
+# state 0: default
+# state 1: input
+# state 2: output
+f$ = (comments) ->
+  _.reduce comments, ([accum, state], comment) ->
+    _.reduce _.initial(comment.value.match(/(?!\s).*/g)), ([accum, state], line) ->
+      switch state
+        when 0
+          if prefix = _.first /^>/.exec line
+            [[accum..., {loc: comment.loc, input_: {location: comment.loc.start, lines: [line.substr prefix.length]}}], 1]
+          else
+            [accum, 0]
+        when 1
+          [initial..., {loc, input_}] = accum
+          if prefix = _.first /^>/.exec line
+            [[accum..., {loc: comment.loc, input_: {location: comment.loc.start, lines: [line.substr prefix.length]}}], 1]
+          else if prefix = _.first /^[.]+/.exec line
+            {location, lines} = input_
+            [[initial..., {loc: {start: loc.start, end: comment.loc.end}, input_: {location, lines: [lines..., line.substr prefix.length]}}], 1]
+          else
+            [[initial..., {loc: {start: loc.start, end: comment.loc.end}, input_, output_: {location: comment.loc.start, lines: [line]}}], 0]
+    , [accum, state]
+  , [[], 0]
+
 rewrite.js = (input) ->
   f = (expr) -> "function() {\n  return #{expr}\n}"
 
@@ -121,15 +145,26 @@ rewrite.js = (input) ->
     esprima.parse(input, comment: yes, loc: yes).comments...
     value: '', loc: start: line: Infinity, column: Infinity
   ]
-  _.chain comments
-  .reduce ([chunks, start], {loc}) ->
-    [[chunks..., substring input, start, loc.start], loc.end]
+
+  tests = _.first f$ comments
+
+  codeChunks = _.first _.reduce [tests..., {loc: {start: {line: Infinity, column: Infinity}}, input_: {location: 42, lines: []}}], ([chunks, start], test) ->
+    [[chunks..., substring input, start, test.loc.start], test.loc.end]
   , [[], {line: 1, column: 0}]
-  .first()
-  .zip _.map comments, processComment
-  .flatten()
-  .value()
-  .join ''
+
+  _.flatten(_.zip(
+    codeChunks,
+    [
+      _.map(tests, (test) ->
+        lines = []
+        lines.push "__doctest.input(#{f test.input_.lines.join '\n'})"
+        if _.has test, 'output_'
+          lines.push "__doctest.output(#{test.output_.location.line}, #{f test.output_.lines.join '\n'})"
+        escodegen.generate esprima.parse(lines.join('\n')), indent: '  '
+      )...
+      ''
+    ]
+  )).join('')
 
 
 rewrite.coffee = (input) ->
