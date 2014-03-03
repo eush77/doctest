@@ -104,18 +104,18 @@ f$ = (comments) ->
       switch state
         when 0
           if prefix = _.first /^>/.exec line
-            [[accum..., {loc: comment.loc, input_: {location: comment.loc.start, lines: [line.substr prefix.length]}}], 1]
+            [[accum..., {loc: comment.loc, input: {location: comment.loc.start, lines: [line.substr prefix.length]}}], 1]
           else
             [accum, 0]
         when 1
-          [initial..., {loc, input_}] = accum
+          [initial..., {loc, input}] = accum
           if prefix = _.first /^>/.exec line
-            [[accum..., {loc: comment.loc, input_: {location: comment.loc.start, lines: [line.substr prefix.length]}}], 1]
+            [[accum..., {loc: comment.loc, input: {location: comment.loc.start, lines: [line.substr prefix.length]}}], 1]
           else if prefix = _.first /^[.]+/.exec line
-            {location, lines} = input_
-            [[initial..., {loc: {start: loc.start, end: comment.loc.end}, input_: {location, lines: [lines..., line.substr prefix.length]}}], 1]
+            {location, lines} = input
+            [[initial..., {loc: {start: loc.start, end: comment.loc.end}, input: {location, lines: [lines..., line.substr prefix.length]}}], 1]
           else
-            [[initial..., {loc: {start: loc.start, end: comment.loc.end}, input_, output_: {location: comment.loc.start, lines: [line]}}], 0]
+            [[initial..., {loc: {start: loc.start, end: comment.loc.end}, input, output: {location: comment.loc.start, lines: [line]}}], 0]
     , [accum, state]
   , [[], 0]
 
@@ -148,7 +148,7 @@ rewrite.js = (input) ->
 
   tests = _.first f$ comments
 
-  codeChunks = _.first _.reduce [tests..., {loc: {start: {line: Infinity, column: Infinity}}, input_: {location: 42, lines: []}}], ([chunks, start], test) ->
+  codeChunks = _.first _.reduce [tests..., {loc: {start: {line: Infinity, column: Infinity}}, input: {location: 42, lines: []}}], ([chunks, start], test) ->
     [[chunks..., substring input, start, test.loc.start], test.loc.end]
   , [[], {line: 1, column: 0}]
 
@@ -157,9 +157,9 @@ rewrite.js = (input) ->
     [
       _.map(tests, (test) ->
         lines = []
-        lines.push "__doctest.input(#{f test.input_.lines.join '\n'})"
-        if _.has test, 'output_'
-          lines.push "__doctest.output(#{test.output_.location.line}, #{f test.output_.lines.join '\n'})"
+        lines.push "__doctest.input(#{f test.input.lines.join '\n'})"
+        if _.has test, 'output'
+          lines.push "__doctest.output(#{test.output.location.line}, #{f test.output.lines.join '\n'})"
         escodegen.generate esprima.parse(lines.join('\n')), indent: '  '
       )...
       ''
