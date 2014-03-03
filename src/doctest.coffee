@@ -143,8 +143,8 @@ rewrite.js = (input) ->
   # the final code chunk to be captured.
   {comments} = esprima.parse input, comment: yes, loc: yes
   tests = transformComments comments
-  .concat input: lines: [], loc: start: {line: Infinity, column: Infinity}, \
-                                 end:   {line: Infinity, column: Infinity}
+  .concat input: lines: [], loc: start: line: Infinity, column: Infinity
+
   _.chain tests
   .reduce ([chunks, start], test) ->
     [chunks.concat substring input, start, test.input.loc.start
