@@ -157,28 +157,26 @@ rewrite.js = (input) ->
 
 rewrite.coffee = (input) ->
   wrap =
-    input: (test, indent) -> """
-      #{indent}__doctest.input ->
-      #{indent}  #{test.input.value}
-      #{indent}
-    """
-    output: (test, indent) -> """
-      #{indent}__doctest.output #{test.output.loc.start.line}, ->
-      #{indent}  #{test.output.value}
-      #{indent}
-    """
+    input: (test) ->
+      "__doctest.input -> #{test.input.value}"
+    output: (test) ->
+      "__doctest.output #{test.output.loc.start.line}, -> #{test.output.value}"
 
   source = _.chain input.split '\n'
   .reduce ([expr, lines], line, idx) ->
     if match = /^([ \t]*)#(?!##)[ \t]*(>|[.]*)(.*)$/.exec line
       [..., indent, prefix, value] = match
-      if prefix is '>'
-        [value, if expr then lines.concat wrap.input {input: value: expr}, indent else lines]
+      if prefix is '>' and expr
+        [value, lines.concat "#{indent}#{wrap.input input: value: expr}"]
+      else if prefix is '>'
+        [value, lines]
       else if prefix
         ["#{expr}\n#{indent}  #{value}", lines]
       else if expr
-        ['', lines.concat wrap.input({input: value: expr}, indent),
-                          wrap.output({output: value: value, loc: start: line: idx + 1}, indent)]
+        ['', lines.concat [
+          "#{indent}#{wrap.input input: value: expr}"
+          "#{indent}#{wrap.output output: {value, loc: start: line: idx + 1}}"
+        ]]
       else
         [expr, lines]
     else
