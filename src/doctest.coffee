@@ -79,19 +79,19 @@ transformComments = (comments) ->
     _.reduce _.initial(value.match /(?!\s).*/g), ([state, accum], line) ->
       [prefix] = /^>|^[.]*/.exec line
       if prefix is '>'
-        [1, accum.concat {input: {loc, lines: [line[prefix.length..]]}}]
+        [1, accum.concat {input: {loc, value: line[prefix.length..]}}]
       else if state is 0
         [0, accum]
       else if prefix[0] is '.'
         [1, _.initial(accum).concat {
           input:
             loc: start: _.last(accum).input.loc.start, end: loc.end
-            lines: _.last(accum).input.lines.concat line[prefix.length..]
+            value: "#{_.last(accum).input.value}\n#{line[prefix.length..]}"
         }]
       else
         [0, _.initial(accum).concat {
           input: _.last(accum).input
-          output: {loc, lines: [line]}
+          output: {loc, value: line}
         }]
     , [state, accum]
   , [0, []]
@@ -124,13 +124,13 @@ wrap =
   # wrap.input :: Object -> String
   input: (test) -> """
     __doctest.input(function() {
-      return #{test.input.lines.join '\n'};
+      return #{test.input.value};
     });
   """
   # wrap.output :: Object -> String
   output: (test) -> """
     __doctest.output(#{test.output.loc.start.line}, function() {
-      return #{test.output.lines.join '\n'};
+      return #{test.output.value};
     });
   """
 
@@ -143,7 +143,7 @@ rewrite.js = (input) ->
   # the final code chunk to be captured.
   {comments} = esprima.parse input, comment: yes, loc: yes
   tests = transformComments comments
-  .concat input: lines: [], loc: start: line: Infinity, column: Infinity
+  .concat input: value: '', loc: start: line: Infinity, column: Infinity
 
   _.chain tests
   .reduce ([chunks, start], test) ->
