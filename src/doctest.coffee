@@ -120,21 +120,6 @@ substring = (input, start, end) ->
   , ['', no]
 
 
-wrap =
-  # wrap.input :: Object -> String
-  input: (test) -> """
-    __doctest.input(function() {
-      return #{test.input.value};
-    });
-  """
-  # wrap.output :: Object -> String
-  output: (test) -> """
-    __doctest.output(#{test.output.loc.start.line}, function() {
-      return #{test.output.value};
-    });
-  """
-
-
 rewrite.js = (input) ->
   # Locate all the comments within the input text, then use their
   # positions to create a list containing all the code chunks. Note
@@ -144,6 +129,18 @@ rewrite.js = (input) ->
   {comments} = esprima.parse input, comment: yes, loc: yes
   tests = transformComments comments
   .concat input: value: '', loc: start: line: Infinity, column: Infinity
+
+  wrap =
+    input: (test) -> """
+      __doctest.input(function() {
+        return #{test.input.value};
+      });
+    """
+    output: (test) -> """
+      __doctest.output(#{test.output.loc.start.line}, function() {
+        return #{test.output.value};
+      });
+    """
 
   _.chain tests
   .reduce ([chunks, start], test) ->
@@ -159,20 +156,30 @@ rewrite.js = (input) ->
 
 
 rewrite.coffee = (input) ->
-  f = (indent, expr) -> "->\n#{indent}  #{expr}\n#{indent}"
+  wrap =
+    input: (indent, expr) -> """
+      #{indent}__doctest.input ->
+      #{indent}  #{expr}
+      #{indent}
+    """
+    output: (indent, expr, line) -> """
+      #{indent}__doctest.output #{line}, ->
+      #{indent}  #{expr}
+      #{indent}
+    """
 
   lines = []; expr = ''
   for line, idx in input.split('\n')
     if match = /^([ \t]*)#(?!##)[ \t]*(.+)/.exec line
       [..., indent, comment] = match
       if match = /^>(.*)/.exec comment
-        lines.push "#{indent}__doctest.input #{f indent, expr}" if expr
+        lines.push wrap.input indent, expr if expr
         expr = match[1]
       else if match = /^[.]+(.*)/.exec comment
         expr += "\n#{indent}  #{match[1]}"
       else if expr
-        lines.push "#{indent}__doctest.input #{f indent, expr}"
-        lines.push "#{indent}__doctest.output #{idx + 1}, #{f indent, comment}"
+        lines.push wrap.input indent, expr
+        lines.push wrap.output indent, comment, idx + 1
         expr = ''
     else
       lines.push line
