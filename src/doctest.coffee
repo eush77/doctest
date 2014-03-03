@@ -73,6 +73,47 @@ rewrite = (input, type) ->
   rewrite[type] input.replace /\r\n?/g, '\n'
 
 
+# state 0: default
+# state 1: input
+# state 2: output
+f$ = (comments) ->
+  _.last _.reduce comments, ([state, accum], comment) ->
+    _.reduce _.initial(comment.value.match(/(?!\s).*/g)), ([state, accum], line) ->
+      switch state
+        when 0
+          if prefix = _.first /^>/.exec line
+            [1, accum.concat {
+              input:
+                loc: comment.loc
+                lines: [line.substr prefix.length]
+            }]
+          else
+            [0, accum]
+        when 1
+          [initial..., {input}] = accum
+          if prefix = _.first /^>/.exec line
+            [1, accum.concat {
+              input:
+                loc: comment.loc
+                lines: [line.substr prefix.length]
+            }]
+          else if prefix = _.first /^[.]+/.exec line
+            [1, initial.concat {
+              input:
+                loc: {start: input.loc.start, end: comment.loc.end}
+                lines: [input.lines..., line.substr prefix.length]
+            }]
+          else
+            [0, initial.concat {
+              input
+              output:
+                loc: comment.loc
+                lines: [line]
+            }]
+    , [state, accum]
+  , [0, []]
+
+
 # substring :: String,{line,column},{line,column} -> String
 #
 # Returns the substring between the start and end positions.
@@ -95,76 +136,38 @@ substring = (input, start, end) ->
     , ['', _.last accum]
   , ['', no]
 
-# state 0: default
-# state 1: input
-# state 2: output
-f$ = (comments) ->
-  _.reduce comments, ([accum, state], comment) ->
-    _.reduce _.initial(comment.value.match(/(?!\s).*/g)), ([accum, state], line) ->
-      switch state
-        when 0
-          if prefix = _.first /^>/.exec line
-            [[accum..., {loc: comment.loc, input: {location: comment.loc.start, lines: [line.substr prefix.length]}}], 1]
-          else
-            [accum, 0]
-        when 1
-          [initial..., {loc, input}] = accum
-          if prefix = _.first /^>/.exec line
-            [[accum..., {loc: comment.loc, input: {location: comment.loc.start, lines: [line.substr prefix.length]}}], 1]
-          else if prefix = _.first /^[.]+/.exec line
-            {location, lines} = input
-            [[initial..., {loc: {start: loc.start, end: comment.loc.end}, input: {location, lines: [lines..., line.substr prefix.length]}}], 1]
-          else
-            [[initial..., {loc: {start: loc.start, end: comment.loc.end}, input, output: {location: comment.loc.start, lines: [line]}}], 0]
-    , [accum, state]
-  , [[], 0]
 
 rewrite.js = (input) ->
   f = (expr) -> "function() {\n  return #{expr}\n}"
-
-  processComment = do (expr = '') -> (comment) ->
-    lines = []
-    for line in comment.value.split('\n')
-      if match = /^[ \t]*>(.*)/.exec line
-        lines.push "__doctest.input(#{f expr})" if expr
-        expr = match[1]
-      else if match = /^[ \t]*[.]+(.*)/.exec line
-        expr += "\n#{match[1]}"
-      else if expr
-        lines.push "__doctest.input(#{f expr})"
-        lines.push "__doctest.output(#{comment.loc.start.line}, #{f line})"
-        expr = ''
-    escodegen.generate esprima.parse(lines.join('\n')), indent: '  '
+  capture =
+    input: (test) ->
+      "__doctest.input(#{f test.input.lines.join '\n'})"
+    output: (test) ->
+      "__doctest.output(#{test.output.loc.start.line}, #{f test.output.lines.join '\n'})"
 
   # Locate all the comments within the input text, then use their
   # positions to create a list containing all the code chunks. Note
   # that if there are N comment chunks there are N + 1 code chunks.
   # An empty comment at {line: Infinity, column: Infinity} enables
   # the final code chunk to be captured.
-  comments = [
-    esprima.parse(input, comment: yes, loc: yes).comments...
-    value: '', loc: start: line: Infinity, column: Infinity
-  ]
+  {comments} = esprima.parse input, comment: yes, loc: yes
 
-  tests = _.first f$ comments
+  inf = line: Infinity, column: Infinity
+  tests = f$(comments).concat input: lines: [], loc: start: inf, end: inf
 
-  codeChunks = _.first _.reduce [tests..., {loc: {start: {line: Infinity, column: Infinity}}, input: {location: 42, lines: []}}], ([chunks, start], test) ->
-    [[chunks..., substring input, start, test.loc.start], test.loc.end]
+  generate = _.partial escodegen.generate, _, indent: '  '
+
+  _.chain tests
+  .reduce ([chunks, start], test) ->
+    [chunks.concat substring input, start, test.input.loc.start
+     (test.output ? test.input).loc.end]
   , [[], {line: 1, column: 0}]
-
-  _.flatten(_.zip(
-    codeChunks,
-    [
-      _.map(tests, (test) ->
-        lines = []
-        lines.push "__doctest.input(#{f test.input.lines.join '\n'})"
-        if _.has test, 'output'
-          lines.push "__doctest.output(#{test.output.location.line}, #{f test.output.lines.join '\n'})"
-        escodegen.generate esprima.parse(lines.join('\n')), indent: '  '
-      )...
-      ''
-    ]
-  )).join('')
+  .first()
+  .zip _.map tests, _.compose generate, esprima.parse, (test) ->
+    (capture[p] test for p in ['input', 'output'] when p of test).join('\n')
+  .flatten()
+  .value()
+  .join ''
 
 
 rewrite.coffee = (input) ->
